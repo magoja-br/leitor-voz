@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitor Neural V3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #eef2f5; text-align: center; }
+        .box { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin: 10px 0; }
+        button { padding: 15px; width: 45%; margin: 5px; border: none; border-radius: 8px; font-weight: bold; color: white; font-size: 16px; }
+        .play { background: #007bff; }
+        .down { background: #28a745; }
+        #status { margin-top: 20px; font-weight: bold; color: #333; padding: 10px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffeeba; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>🗣️ Teste Final</h2>
+    
+    <textarea id="texto">Olá! Se você está ouvindo isso, o sistema funcionou no seu Android.</textarea>
+    
+    <div>
+        <button class="play" onclick="tocar()">▶️ Ouvir</button>
+        <button class="down" onclick="baixar()">⬇️ Baixar</button>
+    </div>
+
+    <div id="status">⏳ Aguardando Scripts...</div>
+    <audio id="player" controls style="display:none; width:100%; margin-top:10px;"></audio>
+</div>
+
+<script type="module">
+    // Variáveis Globais
+    let piper = null;
+    const statusDiv = document.getElementById('status');
+    
+    // URLs (Direto da Nuvem)
+    const MODULO_JS = "https://cdn.jsdelivr.net/npm/piper-wasm-web@1.0.4/index.js";
+    const VOZ_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx?download=true";
+    const VOZ_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json?download=true";
+    const MOTOR_WASM = "https://cdn.jsdelivr.net/npm/piper-wasm-web@1.0.4/piper_wasm.wasm";
+
+    function log(msg) {
+        statusDiv.innerText = msg;
+        console.log(msg);
+    }
+
+    // Função Principal que Inicia Tudo
+    async function iniciarSistema() {
+        try {
+            log("📡 Conectando à internet...");
+            
+            // 1. Importação Dinâmica (Para não travar a tela branca)
+            const modulo = await import(MODULO_JS);
+            const createPiper = modulo.createPiper;
+
+            log("📥 Verificando Cache de Voz...");
+            
+            // 2. Prepara Cache
+            const cache = await caches.open('piper-test-v1');
+            
+            // Função auxiliar de download
+            async function pegarArquivo(url, nome) {
+                let resp = await cache.match(url);
+                if (resp) {
+                    log(`✅ ${nome} carregado do celular.`);
+                    return resp;
+                }
+                log(`⬇️ Baixando ${nome} da nuvem...`);
+                resp = await fetch(url);
+                if (!resp.ok) throw new Error(`Falha ao baixar ${nome}`);
+                await cache.put(url, resp.clone());
+                return resp;
+            }
+
+            // 3. Carrega arquivos
+            const blobVoz = await (await pegarArquivo(VOZ_ONNX, "Voz")).blob();
+            const blobJson = await (await pegarArquivo(VOZ_JSON, "Config")).blob();
+
+            log("⚙️ Ligando Motor Neural...");
+
+            // 4. Cria o Piper
+            piper = await createPiper({
+                model: URL.createObjectURL(blobVoz),
+                config: URL.createObjectURL(blobJson),
+                piperWasmUrl: MOTOR_WASM
+            });
+
+            log("✅ PRONTO! Toque em Ouvir.");
+
+        } catch (erro) {
+            log("❌ ERRO: " + erro.message);
+            alert("Erro: " + erro.message + "\nVerifique sua internet!");
+        }
+    }
+
+    // Funções dos Botões
+    window.tocar = async function() {
+        if (!piper) { alert("Ainda carregando..."); return; }
+        const texto = document.getElementById('texto').value;
+        log("🔊 Gerando áudio...");
+        try {
+            const out = await piper.speak(texto);
+            const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const player = document.getElementById('player');
+            player.style.display = 'block';
+            player.src = url;
+            player.play();
+            log("▶️ Reproduzindo");
+        } catch (e) { log("Erro áudio: " + e.message); }
+    }
+
+    window.baixar = async function() {
+        if (!piper) return;
+        const texto = document.getElementById('texto').value;
+        log("💾 Criando arquivo...");
+        const out = await piper.speak(texto);
+        const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = "audio.wav";
+        a.click();
+        log("✅ Download iniciado");
+    }
+
+    // Inicia automaticamente
+    iniciarSistema();
+</script>
+
+</body>
+</html>
