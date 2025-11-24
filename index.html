@@ -3,191 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor Neural V4 (Final)</title>
+    <title>Leitor Neural MP3</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f5; text-align: center; }
-        .box { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 700px; margin: 0 auto; }
-        h2 { color: #2c3e50; margin-bottom: 20px; }
-        
-        textarea { 
-            width: 100%; height: 150px; padding: 15px; 
-            border: 2px solid #ddd; border-radius: 10px; 
-            margin: 15px 0; box-sizing: border-box; 
-            font-size: 16px; resize: vertical;
-        }
-        
-        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-        
-        button { 
-            padding: 15px 30px; border: none; border-radius: 8px; 
-            font-weight: bold; color: white; font-size: 16px; 
-            cursor: pointer; transition: transform 0.1s; flex: 1;
-        }
-        button:active { transform: scale(0.98); }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f6f8; text-align: center; }
+        .box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 700px; margin: 0 auto; }
+        textarea { width: 100%; height: 120px; padding: 15px; border: 2px solid #e1e4e8; border-radius: 8px; margin: 15px 0; font-size: 16px; box-sizing: border-box; resize: vertical; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
         .play { background: #007bff; }
-        .down { background: #28a745; }
-        .file-btn { background: #6c757d; }
-
-        #status { 
-            margin-top: 20px; font-weight: bold; color: #444; 
-            padding: 15px; background: #fff3cd; border-radius: 8px; 
-            border: 1px solid #ffeeba; word-wrap: break-word;
-        }
+        .mp3 { background: #dc3545; } /* Vermelho para MP3 */
+        .file { background: #6c757d; }
+        #status { padding: 15px; background: #e2e6ea; border-radius: 8px; color: #495057; font-weight: bold; margin-top: 15px; }
     </style>
 </head>
 <body>
 
 <div class="box">
-    <h2>🗣️ Leitor Neural Web</h2>
+    <h2>🗣️ Leitor Neural + MP3</h2>
     
-    <div style="text-align: left; margin-bottom: 5px;">
-        <label for="fileInput" style="cursor: pointer; color: #007bff; font-weight: bold;">📂 Abrir Arquivo de Texto (.txt)</label>
-        <input type="file" id="fileInput" accept=".txt,.md" style="display: block; margin-top: 5px;">
-    </div>
+    <label for="fileInput" style="display:block; margin-bottom:10px; cursor:pointer; color:#007bff; font-weight:bold;">
+        📂 Clique aqui para abrir arquivo de texto
+    </label>
+    <input type="file" id="fileInput" accept=".txt,.md" style="display:none">
 
-    <textarea id="texto" placeholder="Digite seu texto aqui ou carregue um arquivo...">Olá! Esta é a versão final do sistema, pronta para rodar no GitHub Pages com alta qualidade.</textarea>
+    <textarea id="texto">Este é o teste final. Agora o sistema converte para MP3 de verdade usando o LameJS.</textarea>
     
-    <div class="controls">
+    <div class="btn-group">
         <button class="play" onclick="tocar()">▶️ Ouvir</button>
-        <button class="down" onclick="baixar()">⬇️ Baixar WAV</button>
+        <button class="mp3" onclick="baixarMP3()">⬇️ Baixar MP3</button>
     </div>
 
-    <div id="status">⏳ Aguardando inicialização...</div>
+    <div id="status">⏳ Aguardando...</div>
     <audio id="player" controls style="display:none; width:100%; margin-top:10px;"></audio>
 </div>
 
 <script type="module">
-    // --- CONFIGURAÇÃO DOS LINKS (SERVIDOR ESM.SH) ---
-    // Usamos esm.sh porque é otimizado para navegadores e evita erros de CORS
-    const IMPORTER_URL = "https://esm.sh/piper-wasm-web@1.0.4";
-    const WASM_URL     = "https://esm.sh/piper-wasm-web@1.0.4/piper_wasm.wasm";
+    // --- CONFIGURAÇÃO DE LINKS (USANDO UNPKG - MAIS ESTÁVEL) ---
+    const IMPORTER_URL = "https://unpkg.com/piper-wasm-web@1.0.4/index.js";
+    const WASM_URL     = "https://unpkg.com/piper-wasm-web@1.0.4/piper_wasm.wasm";
     
-    // Vozes do HuggingFace (Servidor de Modelos IA)
+    // Voz (HuggingFace)
     const VOZ_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx?download=true";
     const VOZ_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json?download=true";
 
     let piper = null;
     const statusDiv = document.getElementById('status');
 
-    function log(msg) {
-        statusDiv.innerText = msg;
-        console.log(msg);
+    function log(msg) { statusDiv.innerText = msg; console.log(msg); }
+
+    // --- FUNÇÃO MAGICA: CONVERTE ÁUDIO RAW PARA MP3 ---
+    function converterParaMP3(rawAudio, sampleRate) {
+        log("🔄 Convertendo para MP3 (Pode demorar uns segundos)...");
+        const encoder = new lamejs.Mp3Encoder(1, sampleRate, 128); // Mono, Hz, 128kbps
+        
+        // Converte Float32 (Piper) para Int16 (LameJS)
+        const samples = new Int16Array(rawAudio.length);
+        for (let i = 0; i < rawAudio.length; i++) {
+            // Multiplica por 32767 para transformar decimal em inteiro
+            samples[i] = rawAudio[i] < 0 ? rawAudio[i] * 0x8000 : rawAudio[i] * 0x7FFF;
+        }
+
+        const mp3Data = [];
+        const mp3Part = encoder.encodeBuffer(samples);
+        if (mp3Part.length > 0) mp3Data.push(mp3Part);
+        
+        const mp3End = encoder.flush();
+        if (mp3End.length > 0) mp3Data.push(mp3End);
+
+        return new Blob(mp3Data, { type: 'audio/mp3' });
     }
 
-    async function iniciarSistema() {
+    async function iniciar() {
         try {
-            log("📡 Conectando ao servidor neural...");
+            log("📡 Conectando (Versão UNPKG)...");
             
-            // 1. Importação Dinâmica do Módulo JS
+            // Importação Dinâmica
             const modulo = await import(IMPORTER_URL);
             const createPiper = modulo.createPiper;
 
-            log("📥 Verificando Cache da Voz (35MB)...");
-            
-            // 2. Prepara o Cache (Cofre do Navegador)
-            const cache = await caches.open('piper-final-v4');
-            
-            async function pegarArquivo(url, nome) {
-                // Tenta pegar do cache primeiro
-                let resp = await cache.match(url);
-                if (resp) {
-                    console.log(`${nome} encontrado no cache.`);
-                    return resp;
-                }
-                
-                // Se não tem, baixa da internet
-                log(`⬇️ Baixando ${nome} (Isso acontece só na 1ª vez)...`);
-                resp = await fetch(url);
-                if (!resp.ok) throw new Error(`Falha no download: ${nome}`);
-                
-                // Salva no cache para sempre
-                await cache.put(url, resp.clone());
-                return resp;
+            // Cache Inteligente
+            const cache = await caches.open('piper-mp3-v1');
+            async function getFile(url) {
+                let r = await cache.match(url);
+                if(r) return r;
+                log("⬇️ Baixando Voz (35MB)...");
+                r = await fetch(url);
+                if(!r.ok) throw new Error("Falha download");
+                await cache.put(url, r.clone());
+                return r;
             }
 
-            // 3. Carrega ou Baixa os arquivos da voz
-            const blobVoz = await (await pegarArquivo(VOZ_ONNX, "Voz IA")).blob();
-            const blobJson = await (await pegarArquivo(VOZ_JSON, "Configuração")).blob();
+            const bVoz = await (await getFile(VOZ_ONNX)).blob();
+            const bJson = await (await getFile(VOZ_JSON)).blob();
 
-            log("⚙️ Ligando Motor de Áudio...");
-
-            // 4. Cria a Instância do Piper
+            log("⚙️ Ligando Motor...");
             piper = await createPiper({
-                model: URL.createObjectURL(blobVoz),
-                config: URL.createObjectURL(blobJson),
-                piperWasmUrl: WASM_URL // Link corrigido do motor
+                model: URL.createObjectURL(bVoz),
+                config: URL.createObjectURL(bJson),
+                piperWasmUrl: WASM_URL
             });
 
-            log("✅ PRONTO! Sistema Online.");
+            log("✅ PRONTO! Escolha Ouvir ou MP3.");
 
-        } catch (erro) {
-            console.error(erro);
-            log("❌ ERRO: " + erro.message + " (Verifique sua internet)");
-        }
+        } catch (e) { log("❌ ERRO: " + e.message); }
     }
 
-    // --- FUNÇÕES DOS BOTÕES ---
+    // --- AÇÕES DOS BOTÕES ---
 
     window.tocar = async function() {
-        if (!piper) { alert("O sistema ainda está carregando a voz..."); return; }
+        if(!piper) { alert("Carregando..."); return; }
+        const txt = document.getElementById('texto').value;
+        log("🔊 Gerando...");
         
-        const texto = document.getElementById('texto').value;
-        if (!texto.trim()) return alert("Digite algum texto!");
-
-        log("🔊 Gerando áudio...");
-        try {
-            // Gera o áudio
-            const out = await piper.speak(texto);
-            
-            // Cria o player
-            const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
-            const url = URL.createObjectURL(blob);
-            const player = document.getElementById('player');
-            player.style.display = 'block';
-            player.src = url;
-            player.play();
-            
-            log("▶️ Reproduzindo...");
-        } catch (e) { log("Erro: " + e.message); }
+        // Pede o áudio ao Piper
+        const out = await piper.speak(txt);
+        
+        const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const p = document.getElementById('player');
+        p.style.display = 'block';
+        p.src = url;
+        p.play();
+        log("▶️ Tocando");
     }
 
-    window.baixar = async function() {
-        if (!piper) { alert("Aguarde o carregamento."); return; }
+    window.baixarMP3 = async function() {
+        if(!piper) { alert("Carregando..."); return; }
+        const txt = document.getElementById('texto').value;
+        if(txt.length > 500) log("⚠️ Texto longo! A conversão vai demorar...");
         
-        const texto = document.getElementById('texto').value;
-        if (!texto.trim()) return alert("Digite algum texto!");
-
-        log("💾 Criando arquivo...");
+        log("🔊 Gerando áudio bruto...");
+        const out = await piper.speak(txt); // Gera o áudio
         
-        const out = await piper.speak(texto);
-        const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
+        // O Piper retorna 'rawAudio' que são os dados puros (Float32)
+        // A frequência padrão dessas vozes costuma ser 22050Hz
+        const blobMP3 = converterParaMP3(out.rawAudio, 22050);
         
-        // Cria link de download invisível e clica nele
+        log("💾 Baixando MP3...");
+        const url = URL.createObjectURL(blobMP3);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = "audio-gerado.wav";
+        a.href = url;
+        a.download = "audio-piper.mp3";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
-        log("✅ Download iniciado!");
+        log("✅ Download MP3 Iniciado!");
     }
 
-    // --- LEITURA DE ARQUIVO LOCAL ---
+    // Input de Arquivo
     document.getElementById('fileInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = function(e) { 
-            document.getElementById('texto').value = e.target.result; 
-        };
-        reader.readAsText(file);
+        const f = e.target.files[0];
+        if(!f) return;
+        const r = new FileReader();
+        r.onload = function(e) { document.getElementById('texto').value = e.target.result; };
+        r.readAsText(f);
     });
 
-    // Inicia tudo automaticamente
-    iniciarSistema();
+    iniciar();
 </script>
 
 </body>
