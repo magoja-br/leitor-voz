@@ -3,130 +3,190 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor Neural V3</title>
+    <title>Leitor Neural V4 (Final)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #eef2f5; text-align: center; }
-        .box { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin: 10px 0; }
-        button { padding: 15px; width: 45%; margin: 5px; border: none; border-radius: 8px; font-weight: bold; color: white; font-size: 16px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f5; text-align: center; }
+        .box { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 700px; margin: 0 auto; }
+        h2 { color: #2c3e50; margin-bottom: 20px; }
+        
+        textarea { 
+            width: 100%; height: 150px; padding: 15px; 
+            border: 2px solid #ddd; border-radius: 10px; 
+            margin: 15px 0; box-sizing: border-box; 
+            font-size: 16px; resize: vertical;
+        }
+        
+        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        
+        button { 
+            padding: 15px 30px; border: none; border-radius: 8px; 
+            font-weight: bold; color: white; font-size: 16px; 
+            cursor: pointer; transition: transform 0.1s; flex: 1;
+        }
+        button:active { transform: scale(0.98); }
         .play { background: #007bff; }
         .down { background: #28a745; }
-        #status { margin-top: 20px; font-weight: bold; color: #333; padding: 10px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffeeba; }
+        .file-btn { background: #6c757d; }
+
+        #status { 
+            margin-top: 20px; font-weight: bold; color: #444; 
+            padding: 15px; background: #fff3cd; border-radius: 8px; 
+            border: 1px solid #ffeeba; word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
 
 <div class="box">
-    <h2>🗣️ Teste Final</h2>
+    <h2>🗣️ Leitor Neural Web</h2>
     
-    <textarea id="texto">Olá! Se você está ouvindo isso, o sistema funcionou no seu Android.</textarea>
-    
-    <div>
-        <button class="play" onclick="tocar()">▶️ Ouvir</button>
-        <button class="down" onclick="baixar()">⬇️ Baixar</button>
+    <div style="text-align: left; margin-bottom: 5px;">
+        <label for="fileInput" style="cursor: pointer; color: #007bff; font-weight: bold;">📂 Abrir Arquivo de Texto (.txt)</label>
+        <input type="file" id="fileInput" accept=".txt,.md" style="display: block; margin-top: 5px;">
     </div>
 
-    <div id="status">⏳ Aguardando Scripts...</div>
+    <textarea id="texto" placeholder="Digite seu texto aqui ou carregue um arquivo...">Olá! Esta é a versão final do sistema, pronta para rodar no GitHub Pages com alta qualidade.</textarea>
+    
+    <div class="controls">
+        <button class="play" onclick="tocar()">▶️ Ouvir</button>
+        <button class="down" onclick="baixar()">⬇️ Baixar WAV</button>
+    </div>
+
+    <div id="status">⏳ Aguardando inicialização...</div>
     <audio id="player" controls style="display:none; width:100%; margin-top:10px;"></audio>
 </div>
 
 <script type="module">
-    // Variáveis Globais
-    let piper = null;
-    const statusDiv = document.getElementById('status');
+    // --- CONFIGURAÇÃO DOS LINKS (SERVIDOR ESM.SH) ---
+    // Usamos esm.sh porque é otimizado para navegadores e evita erros de CORS
+    const IMPORTER_URL = "https://esm.sh/piper-wasm-web@1.0.4";
+    const WASM_URL     = "https://esm.sh/piper-wasm-web@1.0.4/piper_wasm.wasm";
     
-    // URLs (Direto da Nuvem)
-    const MODULO_JS = "https://cdn.jsdelivr.net/npm/piper-wasm-web@1.0.4/index.js";
+    // Vozes do HuggingFace (Servidor de Modelos IA)
     const VOZ_ONNX = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx?download=true";
     const VOZ_JSON = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json?download=true";
-    const MOTOR_WASM = "https://cdn.jsdelivr.net/npm/piper-wasm-web@1.0.4/piper_wasm.wasm";
+
+    let piper = null;
+    const statusDiv = document.getElementById('status');
 
     function log(msg) {
         statusDiv.innerText = msg;
         console.log(msg);
     }
 
-    // Função Principal que Inicia Tudo
     async function iniciarSistema() {
         try {
-            log("📡 Conectando à internet...");
+            log("📡 Conectando ao servidor neural...");
             
-            // 1. Importação Dinâmica (Para não travar a tela branca)
-            const modulo = await import(MODULO_JS);
+            // 1. Importação Dinâmica do Módulo JS
+            const modulo = await import(IMPORTER_URL);
             const createPiper = modulo.createPiper;
 
-            log("📥 Verificando Cache de Voz...");
+            log("📥 Verificando Cache da Voz (35MB)...");
             
-            // 2. Prepara Cache
-            const cache = await caches.open('piper-test-v1');
+            // 2. Prepara o Cache (Cofre do Navegador)
+            const cache = await caches.open('piper-final-v4');
             
-            // Função auxiliar de download
             async function pegarArquivo(url, nome) {
+                // Tenta pegar do cache primeiro
                 let resp = await cache.match(url);
                 if (resp) {
-                    log(`✅ ${nome} carregado do celular.`);
+                    console.log(`${nome} encontrado no cache.`);
                     return resp;
                 }
-                log(`⬇️ Baixando ${nome} da nuvem...`);
+                
+                // Se não tem, baixa da internet
+                log(`⬇️ Baixando ${nome} (Isso acontece só na 1ª vez)...`);
                 resp = await fetch(url);
-                if (!resp.ok) throw new Error(`Falha ao baixar ${nome}`);
+                if (!resp.ok) throw new Error(`Falha no download: ${nome}`);
+                
+                // Salva no cache para sempre
                 await cache.put(url, resp.clone());
                 return resp;
             }
 
-            // 3. Carrega arquivos
-            const blobVoz = await (await pegarArquivo(VOZ_ONNX, "Voz")).blob();
-            const blobJson = await (await pegarArquivo(VOZ_JSON, "Config")).blob();
+            // 3. Carrega ou Baixa os arquivos da voz
+            const blobVoz = await (await pegarArquivo(VOZ_ONNX, "Voz IA")).blob();
+            const blobJson = await (await pegarArquivo(VOZ_JSON, "Configuração")).blob();
 
-            log("⚙️ Ligando Motor Neural...");
+            log("⚙️ Ligando Motor de Áudio...");
 
-            // 4. Cria o Piper
+            // 4. Cria a Instância do Piper
             piper = await createPiper({
                 model: URL.createObjectURL(blobVoz),
                 config: URL.createObjectURL(blobJson),
-                piperWasmUrl: MOTOR_WASM
+                piperWasmUrl: WASM_URL // Link corrigido do motor
             });
 
-            log("✅ PRONTO! Toque em Ouvir.");
+            log("✅ PRONTO! Sistema Online.");
 
         } catch (erro) {
-            log("❌ ERRO: " + erro.message);
-            alert("Erro: " + erro.message + "\nVerifique sua internet!");
+            console.error(erro);
+            log("❌ ERRO: " + erro.message + " (Verifique sua internet)");
         }
     }
 
-    // Funções dos Botões
+    // --- FUNÇÕES DOS BOTÕES ---
+
     window.tocar = async function() {
-        if (!piper) { alert("Ainda carregando..."); return; }
+        if (!piper) { alert("O sistema ainda está carregando a voz..."); return; }
+        
         const texto = document.getElementById('texto').value;
+        if (!texto.trim()) return alert("Digite algum texto!");
+
         log("🔊 Gerando áudio...");
         try {
+            // Gera o áudio
             const out = await piper.speak(texto);
+            
+            // Cria o player
             const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
             const url = URL.createObjectURL(blob);
             const player = document.getElementById('player');
             player.style.display = 'block';
             player.src = url;
             player.play();
-            log("▶️ Reproduzindo");
-        } catch (e) { log("Erro áudio: " + e.message); }
+            
+            log("▶️ Reproduzindo...");
+        } catch (e) { log("Erro: " + e.message); }
     }
 
     window.baixar = async function() {
-        if (!piper) return;
+        if (!piper) { alert("Aguarde o carregamento."); return; }
+        
         const texto = document.getElementById('texto').value;
+        if (!texto.trim()) return alert("Digite algum texto!");
+
         log("💾 Criando arquivo...");
+        
         const out = await piper.speak(texto);
         const blob = new Blob([out.rawHtml], { type: 'audio/wav' });
+        
+        // Cria link de download invisível e clica nele
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = "audio.wav";
+        a.download = "audio-gerado.wav";
+        document.body.appendChild(a);
         a.click();
-        log("✅ Download iniciado");
+        document.body.removeChild(a);
+        
+        log("✅ Download iniciado!");
     }
 
-    // Inicia automaticamente
+    // --- LEITURA DE ARQUIVO LOCAL ---
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) { 
+            document.getElementById('texto').value = e.target.result; 
+        };
+        reader.readAsText(file);
+    });
+
+    // Inicia tudo automaticamente
     iniciarSistema();
 </script>
 
